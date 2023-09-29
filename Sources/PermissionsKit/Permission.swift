@@ -72,6 +72,11 @@ open class Permission {
         preconditionFailure("This method must be overridden.")
     }
     
+    @available(iOS 17.0, *)
+    open func request() async -> Status {
+        .notDetermined
+    }
+    
     open var canBePresentWithCustomInterface: Bool {
         return true
     }

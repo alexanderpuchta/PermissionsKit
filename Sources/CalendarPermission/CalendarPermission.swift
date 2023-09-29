@@ -95,37 +95,82 @@ public class CalendarPermission: Permission {
         let eventStore = EKEventStore()
         
         if #available(iOS 17.0, *) {
-            
-            let requestWriteOnly = {
-                eventStore.requestWriteOnlyAccessToEvents { (accessGranted: Bool, error: Error?) in
-                    DispatchQueue.main.async {
-                        completion()
-                    }
-                }
-            }
-            
-            let requestFull = {
-                eventStore.requestFullAccessToEvents { (accessGranted: Bool, error: Error?) in
-                    DispatchQueue.main.async {
-                        completion()
-                    }
-                }
-            }
-            
             switch kind {
             case .calendar(let access):
-                if access == .write {
-                    requestWriteOnly()
-                } else {
-                    requestFull()
+                switch access {
+                case .full:
+                    eventStore.requestFullAccess { (isGranted: Bool, error: Error?) in
+                        completion()
+                    }
+                    
+                case .write:
+                    eventStore.requestWriteOnlyAccess { (isGranted: Bool, error: Error?) in
+                        completion()
+                    }
                 }
+                
             default:
-                requestFull()
+                completion()
             }
         } else {
-            eventStore.requestAccess(to: EKEntityType.event) { (accessGranted: Bool, error: Error?) in
+            eventStore.requestFullAccess { (isGranted: Bool, error: Error?) in
+                completion()
+            }
+        }
+    }
+   
+    @available(iOS 17.0, *)
+    public override func request() async -> Status {
+        
+        let eventStore = EKEventStore()
+        
+        return await withCheckedContinuation { continuation in
+            switch kind {
+            case .calendar(let access):
+                switch access {
+                case .full:
+                    eventStore.requestFullAccess { (isGranted: Bool, error: Error?) in
+                        continuation.resume(returning: isGranted ? .authorized : .denied)
+                    }
+                    
+                case .write:
+                    eventStore.requestWriteOnlyAccess { (isGranted: Bool, error: Error?) in
+                        continuation.resume(returning: isGranted ? .authorized : .denied)
+                    }
+                }
+                
+            default:
+                continuation.resume(returning: .notDetermined)
+            }
+        }
+    }
+}
+
+private extension EKEventStore {
+    
+    typealias EventStoreAction = ((isGranted: Bool, error: Error?)) -> Void
+    
+    func requestFullAccess(completion: @escaping EventStoreAction) {
+        if #available(iOS 17.0, *) {
+            self.requestFullAccessToEvents { (accessGranted: Bool, error: Error?) in
                 DispatchQueue.main.async {
-                    completion()
+                    completion((isGranted: accessGranted, error: error))
+                }
+            }
+        } else {
+            self.requestAccess(to: EKEntityType.event) { (accessGranted: Bool, error: Error?) in
+                DispatchQueue.main.async {
+                    completion((isGranted: accessGranted, error: error))
+                }
+            }
+        }
+    }
+    
+    func requestWriteOnlyAccess(completion: @escaping EventStoreAction) {
+        if #available(iOS 17.0, *) {
+            self.requestWriteOnlyAccessToEvents { (accessGranted: Bool, error: Error?) in
+                DispatchQueue.main.async {
+                    completion((isGranted: accessGranted, error: error))
                 }
             }
         }
